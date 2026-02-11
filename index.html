@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>HTML5 Display Ads – Preview</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    h1 { margin: 0 0 8px; }
+    h2 { margin: 22px 0 12px; }
+    .note { color: #555; margin: 0 0 18px; }
+
+    .tabs { display:flex; gap:10px; flex-wrap:wrap; margin: 0 0 20px; }
+    .tab { padding: 8px 12px; border: 1px solid #ddd; border-radius: 999px; cursor: pointer; user-select:none; }
+    .tab.active { border-color:#111; }
+
+    .section { display:none; }
+    .section.active { display:block; }
+
+    .grid { display: grid; gap: 14px; }
+
+    /* label row only */
+    .card { border: 0; padding: 0; background: transparent; }
+    .row { display:flex; justify-content: space-between; align-items:center; gap:12px; padding: 10px 0 6px; border-top: 1px solid #eee; }
+    .grid .card:first-child .row { border-top: 0; }
+
+    .name { font-weight: 700; }
+    .size { color: #666; font-size: 13px; font-weight: 500; }
+
+    /* IMPORTANT: no frame, no padding, no clipping */
+    .wrap {
+      margin-top: 8px;
+      padding: 0;
+      background: transparent;
+      display: inline-block; /* hug the iframe */
+      overflow: visible;
+      line-height: 0;
+    }
+
+    /* IMPORTANT: do not add outlines/borders */
+    iframe {
+      border: 0 !important;
+      outline: none !important;
+      box-shadow: none !important;
+      display: block;
+      background: transparent;
+    }
+
+    button { border: 1px solid #ccc; background: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; }
+    button:hover { background: #f2f2f2; }
+
+    .small { font-size: 12px; color:#666; margin-top: 10px; }
+    a { color: inherit; }
+  </style>
+</head>
+<body>
+  <h1>HTML5 Display Ads – Preview</h1>
+  <p class="note">Live preview of all HTML5 banners (loads from each language folder’s <code>HTML/UNZIPPED</code>). Use “Restart” to replay animation.</p>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="content"></div>
+
+  <script>
+    const languages = [
+      { key:"AR", label:"AR", base:"AR_DisplayAds/HTML/UNZIPPED", banners:["AR_160X600","AR_300X250","AR_300X250_DESKTOP","AR_300X600","AR_320X50","AR_320X250","AR_320X250_DESKTOP"] },
+      { key:"KO", label:"KO", base:"KO_DisplayAds/HTML/UNZIPPED", banners:["KO_120X600","KO_300X250","KO_300X250_DESKTOP","KO_300X600","KO_320X50","KO_320X250","KO_320X250_DESKTOP"] },
+      { key:"SC", label:"SC", base:"SC_DisplayAds/HTML/UNZIPPED", banners:["SC_300X250","SC_300X250_DESKTOP","SC_300X600","SC_640X100","SC_1000X90"] },
+      { key:"TC", label:"TC", base:"TC_DisplayAds/HTML/UNZIPPED", banners:["TC_160X600","TC_300X250","TC_300X250_DESKTOP","TC_300X600","TC_320X50","TC_320X250","TC_320X250_DESKTOP"] }
+    ];
+
+    const sizes = {
+      "120X600": [120, 600],
+      "160X600": [160, 600],
+      "300X250": [300, 250],
+      "300X600": [300, 600],
+      "320X50":  [320, 50],
+      "320X250": [320, 250],
+      "640X100": [640, 100],
+      "1000X90": [1000, 90]
+    };
+
+    function getSizeFromName(folderName) {
+      const hit = Object.keys(sizes).find(k => folderName.toUpperCase().includes(k));
+      return hit ? { key: hit, w: sizes[hit][0], h: sizes[hit][1] } : { key: "", w: 600, h: 400 };
+    }
+
+    // ✅ Core fix: after iframe loads, measure the real content size and resize iframe to match.
+    function autosizeIframe(iframe, fallbackW, fallbackH, labelEl) {
+      const safeSet = (w, h) => {
+        iframe.style.width = `${w}px`;
+        iframe.style.height = `${h}px`;
+        iframe.setAttribute("width", String(w));
+        iframe.setAttribute("height", String(h));
+        if (labelEl) labelEl.textContent = `(${w}×${h})`;
+      };
+
+      // set initial size immediately
+      safeSet(fallbackW, fallbackH);
+
+      iframe.addEventListener("load", () => {
+        try {
+          const doc = iframe.contentDocument;
+          if (!doc) return;
+
+          // give layout a tick in case animations/layout set sizes after load
+          requestAnimationFrame(() => {
+            try {
+              const de = doc.documentElement;
+              const b = doc.body;
+
+              const w = Math.max(
+                de?.scrollWidth || 0,
+                b?.scrollWidth || 0,
+                de?.offsetWidth || 0,
+                b?.offsetWidth || 0
+              );
+
+              const h = Math.max(
+                de?.scrollHeight || 0,
+                b?.scrollHeight || 0,
+                de?.offsetHeight || 0,
+                b?.offsetHeight || 0
+              );
+
+              // Only grow (prevents weird shrink bugs)
+              const finalW = Math.max(fallbackW, w);
+              const finalH = Math.max(fallbackH, h);
+
+              safeSet(finalW, finalH);
+            } catch {}
+          });
+        } catch {
+          // cross-origin would fail, but your files are same-origin so should be fine
+        }
+      });
+    }
+
+    const tabsEl = document.getElementById("tabs");
+    const contentEl = document.getElementById("content");
+
+    function makeSection(lang) {
+      const section = document.createElement("div");
+      section.className = "section";
+      section.id = `section-${lang.key}`;
+
+      const title = document.createElement("h2");
+      title.textContent = lang.label;
+      section.appendChild(title);
+
+      const grid = document.createElement("div");
+      grid.className = "grid";
+
+      lang.banners.forEach(folder => {
+        const { key, w, h } = getSizeFromName(folder);
+
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const row = document.createElement("div");
+        row.className = "row";
+
+        const left = document.createElement("div");
+        const sizeSpan = document.createElement("span");
+        sizeSpan.className = "size";
+        sizeSpan.textContent = key ? `(${w}×${h})` : "";
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "name";
+        nameSpan.textContent = folder;
+
+        left.appendChild(nameSpan);
+        left.appendChild(document.createTextNode(" "));
+        left.appendChild(sizeSpan);
+
+        const right = document.createElement("div");
+        right.style.display = "flex";
+        right.style.gap = "8px";
+        right.style.alignItems = "center";
+
+        const openLink = document.createElement("a");
+        openLink.href = `./${lang.base}/${folder}/index.html`;
+        openLink.target = "_blank";
+        openLink.rel = "noopener";
+        openLink.className = "size";
+        openLink.textContent = "Open";
+
+        const btn = document.createElement("button");
+        btn.textContent = "Restart";
+
+        right.appendChild(openLink);
+        right.appendChild(btn);
+
+        row.appendChild(left);
+        row.appendChild(right);
+
+        const wrap = document.createElement("div");
+        wrap.className = "wrap";
+
+        const iframe = document.createElement("iframe");
+        iframe.loading = "lazy";
+        iframe.setAttribute("scrolling", "no");
+        iframe.src = `./${lang.base}/${folder}/index.html`;
+
+        // ✅ apply autosize (this stops cropping)
+        autosizeIframe(iframe, w, h, sizeSpan);
+
+        // Restart animation (keeps same autosize behaviour)
+        btn.onclick = () => {
+          const url = iframe.src.split("?")[0];
+          iframe.src = `${url}?t=${Date.now()}`;
+        };
+
+        wrap.appendChild(iframe);
+        card.appendChild(row);
+        card.appendChild(wrap);
+        grid.appendChild(card);
+      });
+
+      section.appendChild(grid);
+
+      const foot = document.createElement("div");
+      foot.className = "small";
+      foot.innerHTML = `Source path: <code>${lang.base}</code>`;
+      section.appendChild(foot);
+
+      return section;
+    }
+
+    function setActive(key) {
+      document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.key === key));
+      document.querySelectorAll(".section").forEach(s => s.classList.toggle("active", s.id === `section-${key}`));
+      history.replaceState(null, "", `#${key}`);
+    }
+
+    languages.forEach((lang) => {
+      const tab = document.createElement("div");
+      tab.className = "tab";
+      tab.dataset.key = lang.key;
+      tab.textContent = lang.label;
+      tab.onclick = () => setActive(lang.key);
+      tabsEl.appendChild(tab);
+      contentEl.appendChild(makeSection(lang));
+    });
+
+    const initial = (location.hash || "").replace("#", "") || "AR";
+    setActive(languages.some(l => l.key === initial) ? initial : "AR");
+  </script>
+</body>
+</html>
